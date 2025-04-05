@@ -1,63 +1,78 @@
-use std::cell::RefCell;
 use std::rc::Rc;
+use std::cell::RefCell;
 use crate::individual::Individual;
-use crate::Simulation;
 
-pub(crate) struct Cell<'s> {
-    pub(crate) x: i32,
-    pub(crate) y: i32,
+/// Cell struct represents a single cell in the simulation grid
+/// Each cell can be empty or contain a prey or predator
+pub struct Cell {
+    pub x: i32,
+    pub y: i32,
     pub content: Option<Box<dyn Individual>>,
-    neighbours: Vec<&'s mut Rc<RefCell<Cell<'s>>>>,
-    simulation: Rc<RefCell<&'static mut Simulation>>,
-    pub(crate) is_empty: bool,
-    pub(crate) is_predator: bool,
-    pub(crate) is_prey: bool,
+    pub neighbors: Vec<Rc<RefCell<Cell>>>, // Using Rc<RefCell<>> for shared mutability
+    pub is_empty: bool,
+    pub is_prey: bool,
+    pub is_predator: bool,
 }
 
-impl<'s> Cell<'s> {
-    pub(crate) fn new(x: i32, y: i32, simulation: Rc<RefCell<&'static mut Simulation>>) -> Self {
-        Cell {
+impl Cell {
+    /// Create a new empty cell at position (x, y)
+    pub fn new(x: i32, y: i32) -> Self {
+        // Initially all cells are empty
+        Self {
             x,
             y,
             content: None,
-            neighbours: Vec::new(),
-            simulation,
+            neighbors: Vec::new(),
             is_empty: true,
-            is_predator: false,
             is_prey: false,
+            is_predator: false,
         }
     }
     
-    pub(crate) fn update(&mut self, nearest_prey: Option<(i32, i32)>) {
-        if let Some(content) = &mut self.content {
-            let mut local_empty_cells = Vec::new();
-            
-            let is_dead = content.update(nearest_prey, &mut local_empty_cells, &mut self.neighbours);
-            if is_dead {
-                self.empty();
-            }
-        }
-    }
-    pub(crate) fn add_neighbour(&mut self, neighbour: &'s mut Rc<RefCell<Cell<'s>>>) {
-        self.neighbours.push(neighbour);
+    /// Add a neighboring cell reference
+    pub fn add_neighbor(&mut self, neighbor: Rc<RefCell<Cell>>) {
+        self.neighbors.push(neighbor);
     }
 
-    pub(crate) fn empty(&mut self) {
+    /// Update the cell based on its current content
+    pub fn update(&mut self, nearest_prey: Option<(i32, i32)>) -> bool {
+        // If the cell has content, update it
+        if let Some(content) = &mut self.content {
+            // Get neighbor cells that are empty for potential movement
+            let local_empty_cells: Vec<Rc<RefCell<Cell>>> = self.neighbors
+                .iter()
+                .filter(|cell| cell.borrow().is_empty)
+                .cloned()
+                .collect();
+            
+            // Get all neighboring cells
+            let local_contents: Vec<Rc<RefCell<Cell>>> = self.neighbors.clone();
+            
+            // Update the individual in this cell
+            let result = content.update(self, nearest_prey, local_contents, local_empty_cells);
+            
+            // If the individual died or moved, clear this cell
+            if result {
+                self.empty();
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Empty this cell (remove any content)
+    pub fn empty(&mut self) {
         self.content = None;
         self.is_empty = true;
         self.is_predator = false;
         self.is_prey = false;
     }
-
-    fn is_empty(&self) -> bool {
-        self.is_empty
-    }
-
-    pub(crate) fn is_prey(&self) -> bool {
-        self.is_prey
-    }
-
-    pub(crate) fn is_predator(&self) -> bool {
-        self.is_predator
+    
+    /// Set the content of this cell
+    pub fn set_content(&mut self, content: Box<dyn Individual>, is_prey: bool, is_predator: bool) {
+        self.content = Some(content);
+        self.is_empty = false;
+        self.is_prey = is_prey;
+        self.is_predator = is_predator;
     }
 }

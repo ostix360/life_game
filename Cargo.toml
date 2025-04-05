@@ -7,3 +7,5 @@ edition = "2021"
 kd-tree = "0.6.0"
 pyo3 = "0.24.1"
 rand = "0.9.0"
+rayon = "1.8.0"  # For parallel processing
+ordered-float = "5.0.0"  # Required by kd-tree operations

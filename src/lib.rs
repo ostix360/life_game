@@ -1,126 +1,328 @@
-
 // This is a Rust library that simulates a simple ecosystem with prey and predators.
-
-mod individual;
-mod cell;
+// The simulation uses a grid of cells, each of which can contain either a prey or predator.
+// The simulation follows these rules:
+// 1. Prey can move randomly and reproduce when near other prey
+// 2. Predators hunt prey, move toward prey, and reproduce when near other predators
+// 3. Predators die if they don't eat for too long
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::collections::HashSet;
 use rand::Rng;
-use kd_tree;
+use kd_tree::KdTree;
+use rayon::prelude::*;
+
+pub mod individual;
+pub mod cell;
 
 use crate::cell::Cell;
 use crate::individual::prey::Prey;
 use crate::individual::predator::Predator;
 
+/// Parameters for the simulation
+pub struct SimulationConfig {
+    /// Width of the simulation grid
+    pub width: usize,
+    /// Height of the simulation grid
+    pub height: usize,
+    /// Chance of prey reproduction per update
+    pub prey_reproduction_rate: f32,
+    /// Chance of prey movement per update
+    pub prey_moving_factor: f32,
+    /// Chance of successful predator hunting per update
+    pub predator_hunting_factor: f32,
+    /// Chance of predator reproduction per update
+    pub predator_reproduction_rate: f32,
+    /// Number of updates without food before predator dies
+    pub predator_death_after: u32,
+    /// Initial number of prey in the grid
+    pub nb_prey_init: usize,
+    /// Initial number of predators in the grid
+    pub nb_predator_init: usize,
+}
 
-struct Simulation {
-    width: i32,
-    height: i32,
-    grid: Vec<Vec<Rc<RefCell<Cell<'static>>>>>,
-    prey_position: Vec<(i32, i32)>,
-    predator_position: Vec<(i32, i32)>,
-    prey_reproduction_factor: f32,
-    prey_moving_factor: f32,
-    predator_reproduction_factor: f32,
-    predator_moving_factor: f32,
-    predator_hunting_factor: f32,
-    predator_hunger: u32,
-    predator_death_rate: f32,
-    predator_max_hunger: u32,
-    nb_initial_prey: u32,
-    nb_initial_predators: u32,
+impl Default for SimulationConfig {
+    fn default() -> Self {
+        Self {
+            width: 100,
+            height: 100,
+            prey_reproduction_rate: 0.3,
+            prey_moving_factor: 0.5,
+            predator_hunting_factor: 0.5,
+            predator_reproduction_rate: 0.4,
+            predator_death_after: 25,
+            nb_prey_init: 150,
+            nb_predator_init: 50,
+        }
+    }
+}
+
+/// Main simulation structure
+pub struct Simulation {
+    /// Width of the simulation grid
+    width: usize,
+    /// Height of the simulation grid
+    height: usize,
+    /// 2D grid of cells
+    grid: Vec<Vec<Rc<RefCell<Cell>>>>,
+    /// Set of prey positions (x, y)
+    prey_positions: HashSet<(i32, i32)>,
+    /// Set of predator positions (x, y)
+    predator_positions: HashSet<(i32, i32)>,
+    /// Temporary set for updating prey positions
+    temp_prey_positions: HashSet<(i32, i32)>,
+    /// KD-Tree for efficiently finding nearest prey
+    prey_kdtree: Option<KdTree<[i32; 2]>>,
+    /// Count of prey in the simulation
+    nb_prey: usize,
+    /// Count of predators in the simulation
+    nb_predator: usize,
+    /// Neighbor offsets for calculating adjacent cells
+    neighbor_offsets: Vec<(i32, i32)>,
+    /// Configuration parameters
+    config: SimulationConfig,
 }
 
 impl Simulation {
-    fn new(width: i32, height: i32, prey_reproduction_factor: f32, prey_moving_factor: f32, predator_reproduction_factor: f32, predator_moving_factor: f32, predator_hunting_factor: f32, predator_hunger: u32, predator_death_rate: f32, predator_max_hunger: u32, nb_initial_prey: u32, nb_initial_predators: u32) -> Self {
-        Simulation {
-            width,
-            height,
-            grid: Vec::new(),
-            prey_position: Vec::new(),
-            predator_position: Vec::new(),
-            prey_reproduction_factor,
-            prey_moving_factor,
-            predator_reproduction_factor,
-            predator_moving_factor,
-            predator_hunting_factor,
-            predator_hunger,
-            predator_death_rate,
-            predator_max_hunger,
-            nb_initial_prey,
-            nb_initial_predators,
-        }
+    /// Create a new simulation with the given configuration
+    pub fn new(config: SimulationConfig) -> Self {
+        // Pre-compute offsets for neighboring cells
+        let neighbor_offsets = vec![
+            (-1, -1), (-1, 0), (-1, 1),
+            ( 0, -1),          ( 0, 1),
+            ( 1, -1), ( 1, 0), ( 1, 1),
+        ];
+        
+        // Initialize the simulation
+        let mut sim = Self {
+            width: config.width,
+            height: config.height,
+            grid: vec![vec![]; config.height],
+            prey_positions: HashSet::new(),
+            predator_positions: HashSet::new(),
+            temp_prey_positions: HashSet::new(),
+            prey_kdtree: None,
+            nb_prey: 0,
+            nb_predator: 0,
+            neighbor_offsets,
+            config,
+        };
+        
+        // Initialize the grid with empty cells
+        sim.init_grid();
+        
+        sim
     }
     
-    fn init_grid(mut self){
-        let rc_self = Rc::new(RefCell::new(self));
-        for i in 0..rc_self.borrow().get_width() {
-            let mut row = Vec::new();
-            for j in 0..rc_self.borrow().get_height() {
-                row.push(Rc::new(RefCell::new(Cell::new(i, j, Rc::clone(&rc_self)))));
+    /// Initialize the grid with empty cells and set up neighbors
+    fn init_grid(&mut self) {
+        // Create empty cells
+        self.grid = (0..self.height)
+            .map(|y| {
+                (0..self.width)
+                    .map(|x| Rc::new(RefCell::new(Cell::new(x as i32, y as i32))))
+                    .collect()
+            })
+            .collect();
+        
+        // Set up neighborhood connections
+        for y in 0..self.height {
+            for x in 0..self.width {
+                // Create a mutable reference to the current cell
+                let current_cell = Rc::clone(&self.grid[y][x]);
+                
+                // Add all neighboring cells
+                for &(dx, dy) in &self.neighbor_offsets {
+                    // Calculate neighbor coordinates with wrapping
+                    let nx = (x as i32 + dx + self.width as i32) % self.width as i32;
+                    let ny = (y as i32 + dy + self.height as i32) % self.height as i32;
+                    
+                    // Get reference to the neighbor cell
+                    let neighbor = Rc::clone(&self.grid[ny as usize][nx as usize]);
+                    
+                    // Add the neighbor to the current cell
+                    current_cell.borrow_mut().add_neighbor(neighbor);
+                }
             }
-            rc_self.borrow_mut().grid.push(row);
+        }
+        
+        // Initialize with random prey
+        let mut rng = rand::thread_rng();
+        for _ in 0..self.config.nb_prey_init {
+            let x = rng.gen_range(0..self.width);
+            let y = rng.gen_range(0..self.height);
+            
+            let prey = Prey::new(
+                self.config.prey_reproduction_rate,
+                self.config.prey_moving_factor,
+                x as i32,
+                y as i32
+            );
+            
+            // Add prey to the cell
+            self.grid[y][x].borrow_mut().set_content(Box::new(prey), true, false);
+            
+            // Track prey position
+            self.prey_positions.insert((x as i32, y as i32));
+            self.temp_prey_positions.insert((x as i32, y as i32));
+            self.nb_prey += 1;
+        }
+        
+        // Initialize with random predators
+        for _ in 0..self.config.nb_predator_init {
+            let x = rng.gen_range(0..self.width);
+            let y = rng.gen_range(0..self.height);
+            
+            let predator = Predator::new(
+                self.config.predator_hunting_factor,
+                self.config.predator_reproduction_rate,
+                self.config.predator_death_after,
+                x as i32,
+                y as i32,
+                self.width as i32,   // Pass grid width
+                self.height as i32   // Pass grid height
+            );
+            
+            // Add predator to the cell
+            self.grid[y][x].borrow_mut().set_content(Box::new(predator), false, true);
+            
+            // Track predator position
+            self.predator_positions.insert((x as i32, y as i32));
+            self.nb_predator += 1;
+        }
+        
+        // Build the initial KD-Tree for prey positions
+        self.update_prey_kdtree();
+    }
+    
+    /// Update the KD-Tree with current prey positions for efficient nearest-neighbor search
+    fn update_prey_kdtree(&mut self) {
+        // Convert HashSet to Vec of arrays for KdTree
+        let prey_points: Vec<[i32; 2]> = self.prey_positions
+            .iter()
+            .map(|&(x, y)| [x, y])
+            .collect();
+        
+        // Only build KdTree if we have prey
+        if !prey_points.is_empty() {
+            // Build a new KdTree with current prey positions
+            self.prey_kdtree = Some(KdTree::build_by_ordered_float(prey_points));
+        } else {
+            self.prey_kdtree = None;
         }
     }
     
-    fn get_cell(&mut self, x: i32, y: i32) -> Option<&mut Rc<RefCell<Cell<'static>>>> {
-        if x < 0 || x >= self.width || y < 0 || y >= self.height {
-            return None;
+    /// Find the nearest prey for a predator
+    fn get_nearest_prey(&self, predator_pos: (i32, i32)) -> Option<(i32, i32)> {
+        // If we have a KdTree and prey, find the nearest
+        if let Some(ref tree) = self.prey_kdtree {
+            if !self.prey_positions.is_empty() {
+                // Convert predator position to point format
+                let query = [predator_pos.0, predator_pos.1];
+                
+                // Find the nearest prey
+                if let Some((point, _distance)) = tree.nearest(&query) {
+                    return Some((point[0], point[1]));
+                }
+            }
         }
-        Some(&mut self.grid[x as usize][y as usize])
+        
+        None
     }
     
-    fn get_width(&self) -> i32 {
-        self.width
-    }
-    
-    fn get_height(&self) -> i32 {
-        self.height
-    }
-    
-    fn init_simulation(&'static mut self) {
-        let width = self.get_width();
-        let height = self.get_height();
-        for _ in 0..self.nb_initial_prey {
-            let mut rng = rand::rng();
-            let x = rng.random_range(0..width);
-            let y = rng.random_range(0..height);
-            self.get_cell(x, y).unwrap().borrow_mut().content = Some(Box::new(Prey::new(self.prey_reproduction_factor, self.prey_moving_factor)));
-            self.get_cell(x, y).unwrap().borrow_mut().is_empty = false;
-            self.get_cell(x, y).unwrap().borrow_mut().is_prey = true;
-        }
-        for _ in 0..self.nb_initial_predators {
-            let mut rng = rand::rng();
-            let x = rng.random_range(0..width);
-            let y = rng.random_range(0..height);
-            self.get_cell(x, y).unwrap().borrow_mut().content = Some(Box::new(Predator::new(x, y, self.predator_reproduction_factor, self.predator_moving_factor, self.predator_hunting_factor, self.predator_max_hunger, width, height)));
-            self.get_cell(x, y).unwrap().borrow_mut().is_empty = false;
-            self.get_cell(x, y).unwrap().borrow_mut().is_predator = true;
-        }
-        for i in 0..width {
-            for j in 0..height {
-                for (dx, dy) in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 0), (0, 1), (1, -1), (1, 0), (1, 1)] {
-                    let ni = (i + dx + width) % height;
-                    let nj = (j + dy + width) % height;
-                    if ni != i || nj != j {
-                        let cell = self.get_cell(i, j).unwrap();
-                        let neighbour = self.get_cell(ni, nj).unwrap();
-                        cell.borrow_mut().add_neighbour(neighbour);
+    /// Update the simulation by one step
+    pub fn update(&mut self) {
+        // Create a vector to track cells that need updating
+        let mut prey_cells = Vec::new();
+        let mut predator_cells = Vec::new();
+        
+        // Collect cells that need to be updated
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let cell = &self.grid[y][x];
+                let cell_ref = cell.borrow();
+                
+                if !cell_ref.is_empty {
+                    if cell_ref.is_prey {
+                        prey_cells.push((x, y));
+                    } else if cell_ref.is_predator {
+                        predator_cells.push((x, y));
                     }
                 }
             }
         }
+        
+        // Update predators first
+        for (x, y) in predator_cells {
+            let cell = &self.grid[y][x];
+            let predator_pos = (x as i32, y as i32);
+            
+            // Find nearest prey for this predator
+            let nearest_prey = self.get_nearest_prey(predator_pos);
+            
+            // Update the predator
+            {
+                let mut cell_mut = cell.borrow_mut();
+                cell_mut.update(nearest_prey);
+            }
+        }
+        
+        // Update prey second
+        for (x, y) in prey_cells {
+            let cell = &self.grid[y][x];
+            
+            // Only update if the cell still contains prey (might have been eaten)
+            if cell.borrow().is_prey {
+                let mut cell_mut = cell.borrow_mut();
+                cell_mut.update(None);
+            }
+        }
+        
+        // Update prey positions for the next iteration
+        self.prey_positions = self.temp_prey_positions.clone();
+        
+        // Update the KD-Tree with new prey positions
+        self.update_prey_kdtree();
+    }
+    
+    /// Get the current number of prey in the simulation
+    pub fn get_prey_count(&self) -> usize {
+        self.nb_prey
+    }
+    
+    /// Get the current number of predators in the simulation
+    pub fn get_predator_count(&self) -> usize {
+        self.nb_predator
+    }
+    
+    /// Get positions of all prey
+    pub fn get_prey_positions(&self) -> &HashSet<(i32, i32)> {
+        &self.prey_positions
+    }
+    
+    /// Get positions of all predators
+    pub fn get_predator_positions(&self) -> &HashSet<(i32, i32)> {
+        &self.predator_positions
     }
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        assert_eq!(true, true);
+    fn test_simulation_initialization() {
+        let config = SimulationConfig {
+            width: 10,
+            height: 10,
+            nb_prey_init: 5,
+            nb_predator_init: 3,
+            ..Default::default()
+        };
+        
+        let sim = Simulation::new(config);
+        
+        assert_eq!(sim.get_prey_count(), 5);
+        assert_eq!(sim.get_predator_count(), 3);
     }
 }

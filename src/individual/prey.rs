@@ -1,65 +1,145 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use rand::prelude::IndexedMutRandom;
-use rand::Rng;
+use rand::prelude::*;
 
 use crate::cell::Cell;
 use crate::individual::Individual;
 
+/// Prey represents herbivores in the simulation
+/// They can move and reproduce but can be eaten by predators
 #[derive(Clone)]
-pub(crate) struct Prey {
-    reproduction_factor: f32,
+pub struct Prey {
+    /// Chance of reproduction per update
+    reproduction_rate: f32,
+    /// Chance of moving per update
     moving_factor: f32,
+    /// Current x position
+    x: i32,
+    /// Current y position
+    y: i32,
 }
 
 impl Prey {
-    pub(crate) fn new(reproduction_factor: f32, moving_factor: f32) -> Self {
-        Prey {
-            reproduction_factor,
+    /// Create a new prey at position (x, y)
+    pub fn new(reproduction_rate: f32, moving_factor: f32, x: i32, y: i32) -> Self {
+        Self {
+            reproduction_rate,
             moving_factor,
+            x,
+            y,
         }
     }
 
-    fn move_to<'s>(&self, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
+    /// Move the prey to an empty cell if possible
+    /// 
+    /// # Returns
+    /// * `bool` - Whether the prey moved
+    fn move_to(&mut self, local_empty_cells: &Vec<Rc<RefCell<Cell>>>) -> bool {
+        // If no empty cells, can't move
         if local_empty_cells.is_empty() {
-            return false
+            return false;
         }
-        let mut rng = rand::rng();
-        let mut empty_cell = local_empty_cells.choose_mut(&mut rng).unwrap();
-        empty_cell.borrow_mut().content = Some(Box::new(self.clone()));
-        empty_cell.borrow_mut().is_empty = false;
-        empty_cell.borrow_mut().is_prey = true;
-        true
+        
+        // Roll for movement chance
+        let mut rng = thread_rng();
+        if rng.gen::<f32>() >= self.moving_factor {
+            return false;
+        }
+        
+        // Choose a random empty cell
+        if let Some(cell) = local_empty_cells.choose(&mut rng) {
+            let mut cell_mut = cell.borrow_mut();
+            
+            // Update position
+            self.x = cell_mut.x;
+            self.y = cell_mut.y;
+            
+            // Move to new cell
+            cell_mut.set_content(Box::new(self.clone()), true, false);
+            
+            return true;
+        }
+        
+        false
     }
 
-    fn reproduce<'s>(&self, local_contents: &Vec<&mut Cell>, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
+    /// Try to reproduce into an empty neighboring cell
+    /// 
+    /// # Returns
+    /// * `bool` - Whether reproduction occurred
+    fn reproduce(&self, local_contents: &Vec<Rc<RefCell<Cell>>>, local_empty_cells: &Vec<Rc<RefCell<Cell>>>) -> bool {
+        // If no empty cells, can't reproduce
         if local_empty_cells.is_empty() {
-            return false
+            return false;
         }
-        let nb_prey = local_contents.iter().filter(|cell| cell.is_prey).count();
-        if nb_prey == 0 || nb_prey >= 4 {
-            return false
-        }
-        let mut rng = rand::rng();
-        for cell in local_contents.iter() {
-            let rng_nb: f32 = rng.random();
-            if cell.is_prey && rng_nb < self.reproduction_factor {
-                let mut empty_cell = local_empty_cells.choose_mut(&mut rng).unwrap();
-                empty_cell.borrow_mut().content = Some(Box::new(Prey::new(self.reproduction_factor, self.moving_factor)));
-                empty_cell.borrow_mut().is_empty = false;
-                empty_cell.borrow_mut().is_prey = true;
-                return true
+        
+        // Count neighboring prey
+        let mut nb_prey = 0;
+        for cell in local_contents {
+            if cell.borrow().is_prey {
+                nb_prey += 1;
             }
         }
+        
+        // Reproduction rules: need at least one other prey but not overcrowded
+        if nb_prey == 0 || nb_prey >= 4 {
+            return false;
+        }
+        
+        // Check if reproduction occurs (based on probability)
+        let mut rng = thread_rng();
+        if rng.gen::<f32>() >= self.reproduction_rate {
+            return false;
+        }
+        
+        // Choose a random empty cell for the offspring
+        if let Some(cell) = local_empty_cells.choose(&mut rng) {
+            let mut cell_mut = cell.borrow_mut();
+            
+            // Create new prey at the empty cell
+            let new_prey = Prey::new(
+                self.reproduction_rate,
+                self.moving_factor,
+                cell_mut.x,
+                cell_mut.y
+            );
+            
+            // Place the new prey
+            cell_mut.set_content(Box::new(new_prey), true, false);
+            
+            return true;
+        }
+        
         false
     }
 }
 
 impl Individual for Prey {
-    fn update<'s>(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut Vec<&mut Cell>, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
-        if self.reproduce(local_contents, local_empty_cells){
-            return false
+    fn update(
+        &mut self,
+        current_cell: &mut Cell,
+        _nearest_prey: Option<(i32, i32)>, // Prey doesn't need this information
+        local_contents: Vec<Rc<RefCell<Cell>>>,
+        local_empty_cells: Vec<Rc<RefCell<Cell>>>
+    ) -> bool {
+        // Try to reproduce first
+        if self.reproduce(&local_contents, &local_empty_cells) {
+            return false; // We stay in current cell
         }
-        self.move_to(local_empty_cells)
+        
+        // If not reproducing, try to move
+        self.move_to(&local_empty_cells)
+    }
+    
+    fn get_position(&self) -> (i32, i32) {
+        (self.x, self.y)
+    }
+    
+    fn is_prey(&self) -> bool {
+        true
+    }
+    
+    fn is_predator(&self) -> bool {
+        false
     }
 }
