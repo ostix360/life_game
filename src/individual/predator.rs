@@ -83,12 +83,10 @@ impl Predator {
         }
         
         // Count neighboring predators
-        let mut nb_predator = 0;
-        for cell in local_contents {
-            if cell.borrow().is_predator {
-                nb_predator += 1;
-            }
-        }
+        let nb_predator = local_contents
+            .iter()
+            .filter(|cell| cell.borrow().is_predator)
+            .count();
         
         // Reproduction rules: need at least one other predator but not overcrowded
         if nb_predator == 0 || nb_predator >= 4 {
@@ -179,9 +177,7 @@ impl Predator {
             for cell in local_empty_cells {
                 let cell_ref = cell.borrow();
                 if cell_ref.x == new_x && cell_ref.y == new_y {
-                    // Found the cell we want to move to
-                    drop(cell_ref);  // Release the borrow
-                    
+                    drop(cell_ref); // Drop the borrow to avoid multiple borrows
                     // Move to the target cell
                     let mut cell_mut = cell.borrow_mut();
                     
@@ -220,7 +216,6 @@ impl Predator {
 impl Individual for Predator {
     fn update(
         &mut self,
-        _current_cell: &mut Cell,  // Prefix with underscore to indicate intentionally unused
         nearest_prey: Option<(i32, i32)>,
         local_contents: Vec<Rc<RefCell<Cell>>>,
         local_empty_cells: Vec<Rc<RefCell<Cell>>>
@@ -228,16 +223,12 @@ impl Individual for Predator {
         // Increase hunger each update
         self.hunger += 1;
         
-        // Check for random death
+        // Check for random death and for death from starvation
         let mut rng = rng();
-        if rng.random::<f32>() < self.death_rate {
+        if rng.random::<f32>() < self.death_rate || self.hunger >= self.death_after {
             return true; // Die
         }
         
-        // Check for death from starvation
-        if self.hunger >= self.death_after {
-            return true; // Die
-        }
         
         // Try to hunt prey
         self.hunt(&local_contents);

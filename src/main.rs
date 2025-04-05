@@ -39,15 +39,15 @@ fn main() {
     
     // Create a simulation configuration with custom parameters for more dynamics
     let config = SimulationConfig {
-        width: 100,
-        height: 100,
-        prey_reproduction_rate: 0.3,
-        prey_moving_factor: 0.7,     // Higher mobility
+        width: 500,
+        height: 500,
+        prey_reproduction_rate: 0.5,
+        prey_moving_factor: 0.5,     // Higher mobility
         predator_hunting_factor: 0.6, // Better hunters
-        predator_reproduction_rate: 0.2, // Slower reproduction
-        predator_death_after: 20,     // Starve faster
-        nb_prey_init: 150,
-        nb_predator_init: 50,
+        predator_reproduction_rate: 0.5, // Slower reproduction
+        predator_death_after: 35,     // Starve faster
+        nb_prey_init: 15000,
+        nb_predator_init: 5000,
         ..Default::default()
     };
     
@@ -84,7 +84,7 @@ fn main() {
         predator_counts.push(simulation.get_predator_count());
         
         // Print current status every 50 steps
-        if step % 50 == 0 || step == steps - 1 {
+        if step % 25 == 0 || step == steps - 1 {
             println!(
                 "Step {}: {} prey, {} predators", 
                 step, 

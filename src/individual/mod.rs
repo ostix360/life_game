@@ -20,7 +20,6 @@ pub trait Individual {
     /// * `bool` - Whether the individual died or moved (and should be removed from current cell)
     fn update(
         &mut self, 
-        current_cell: &mut Cell,
         nearest_prey: Option<(i32, i32)>, 
         local_contents: Vec<Rc<RefCell<Cell>>>, 
         local_empty_cells: Vec<Rc<RefCell<Cell>>>

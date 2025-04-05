@@ -69,18 +69,11 @@ impl Prey {
     /// # Returns
     /// * `bool` - Whether reproduction occurred
     fn reproduce(&self, local_contents: &Vec<Rc<RefCell<Cell>>>, local_empty_cells: &Vec<Rc<RefCell<Cell>>>) -> bool {
-        // If no empty cells, can't reproduce
-        if local_empty_cells.is_empty() {
-            return false;
-        }
         
-        // Count neighboring prey
-        let mut nb_prey = 0;
-        for cell in local_contents {
-            if cell.borrow().is_prey {
-                nb_prey += 1;
-            }
-        }
+        let nb_prey = local_contents
+            .iter()
+            .filter(|cell| cell.borrow().is_prey)
+            .count();
         
         // Reproduction rules: need at least one other prey but not overcrowded
         if nb_prey == 0 || nb_prey >= 4 {
@@ -118,7 +111,6 @@ impl Prey {
 impl Individual for Prey {
     fn update(
         &mut self,
-        _current_cell: &mut Cell,
         _nearest_prey: Option<(i32, i32)>, // Prey doesn't need this information
         local_contents: Vec<Rc<RefCell<Cell>>>,
         local_empty_cells: Vec<Rc<RefCell<Cell>>>

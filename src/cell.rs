@@ -52,17 +52,16 @@ impl Cell {
             .cloned()
             .collect();
         
-        // Take ownership of the content temporarily
-        let mut content = self.content.take().unwrap();
-        
         // Update the individual
-        let result = content.update(self, nearest_prey, local_contents, local_empty_cells);
+        let result = self.content
+            .as_mut()
+            .unwrap()
+            .update(nearest_prey, local_contents, local_empty_cells);
         
-        // If the individual didn't die or move, put it back
-        if !result {
-            self.content = Some(content);
+        if result {
+            // If the individual died or moved, we need to remove it from this cell
+            self.empty();
         }
-        
         // Return whether the individual died or moved
         result
     }
