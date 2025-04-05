@@ -2,135 +2,24 @@
 // This is a Rust library that simulates a simple ecosystem with prey and predators.
 
 mod individual;
+mod cell;
 
-use rand::prelude::IndexedMutRandom;
+use std::cell::RefCell;
+use std::rc::Rc;
 use rand::Rng;
+use kd_tree;
 
+use crate::cell::Cell;
+use crate::individual::prey::Prey;
+use crate::individual::predator::Predator;
 
-trait Individual {
-    fn update(&self, nearest_prey: Option<Prey>, local_contents: &Vec<Cell>, local_empty_cells: &Vec<Cell>);
-}
-
-
-struct Cell {
-    x: u32,
-    y: u32,
-    pub content: Option<Box<dyn Individual>>,
-    neighbours: Vec<Cell>,
-    simulation: & 'static Simulation,
-    is_empty: bool,
-    is_predator: bool,
-    is_prey: bool,
-}
-
-impl Cell {
-    fn new(x: u32, y: u32, simulation: & 'static Simulation) -> Self {
-        Cell {
-            x,
-            y,
-            content: None,
-            neighbours: Vec::new(),
-            simulation,
-            is_empty: true,
-            is_predator: false,
-            is_prey: false,
-        }
-    }
-
-    fn add_neighbour(&mut self, neighbour: Cell) {
-        self.neighbours.push(neighbour);
-    }
-
-    fn remove_content(&mut self) {
-        self.content = None;
-        self.is_empty = true;
-    }
-
-    fn is_empty(&self) -> bool {
-        self.is_empty
-    }
-
-    fn is_prey(&self) -> bool {
-        self.is_prey
-    }
-
-    fn is_predator(&self) -> bool {
-        self.is_predator
-    }
-}
-
-
-struct Prey {
-    reproduction_factor: f32,
-    moving_factor: f32,
-}
-
-impl Prey {
-    fn new(reproduction_factor: f32, moving_factor: f32) -> Self {
-        Prey {
-            reproduction_factor,
-            moving_factor,
-        }
-    }
-    
-    fn move_to(&self, local_empty_cells: &mut Vec<Cell>) -> bool {
-        if local_empty_cells.is_empty() {
-            return false
-        }
-        let mut rng = rand::rng();
-        let mut empty_cell = local_empty_cells.choose_mut(&mut rng).unwrap();
-        empty_cell.content = Some(Box::new(Prey::new(self.reproduction_factor, self.moving_factor)));
-        empty_cell.is_empty = false;
-        empty_cell.is_prey = true;
-        true
-    }
-
-    fn reproduce(&self, local_contents: &Vec<Cell>, local_empty_cells: &mut Vec<Cell>) -> bool {
-        if local_empty_cells.is_empty() {
-            return false
-        }
-        let nb_prey = local_contents.iter().filter(|cell| cell.is_prey).count();
-        if nb_prey == 0 || nb_prey >= 4 {
-            return false
-        }
-        let mut rng = rand::rng();
-        for cell in local_contents.iter() {
-            let rng_nb: f32 = rng.random();
-            if cell.is_prey && rng_nb < self.reproduction_factor {
-                let mut empty_cell = local_empty_cells.choose_mut(&mut rng).unwrap();
-                empty_cell.content = Some(Box::new(Prey::new(self.reproduction_factor, self.moving_factor)));
-                empty_cell.is_empty = false;
-                empty_cell.is_prey = true;
-                return true
-            }
-        }
-        false
-    }
-}
-
-impl Individual for Prey {
-    fn update(&self, nearest_prey: Option<Prey>, local_contents: &Vec<Cell>, local_empty_cells: &Vec<Cell>) {
-
-    }
-}
-
-struct Predator {
-    x: u32,
-    y: u32,
-    reproduction_factor: f32,
-    moving_factor: f32,
-    hunting_factor: f32,
-    hunger: u32,
-    death_rate: f32,
-    max_hunger: u32,
-}
 
 struct Simulation {
-    width: u32,
-    height: u32,
-    grid: Vec<Vec<Cell>>,
-    prey_position: Vec<(u32, u32)>,
-    predator_position: Vec<(u32, u32)>,
+    width: i32,
+    height: i32,
+    grid: Vec<Vec<Rc<RefCell<Cell<'static>>>>>,
+    prey_position: Vec<(i32, i32)>,
+    predator_position: Vec<(i32, i32)>,
     prey_reproduction_factor: f32,
     prey_moving_factor: f32,
     predator_reproduction_factor: f32,
@@ -141,6 +30,88 @@ struct Simulation {
     predator_max_hunger: u32,
     nb_initial_prey: u32,
     nb_initial_predators: u32,
+}
+
+impl Simulation {
+    fn new(width: i32, height: i32, prey_reproduction_factor: f32, prey_moving_factor: f32, predator_reproduction_factor: f32, predator_moving_factor: f32, predator_hunting_factor: f32, predator_hunger: u32, predator_death_rate: f32, predator_max_hunger: u32, nb_initial_prey: u32, nb_initial_predators: u32) -> Self {
+        Simulation {
+            width,
+            height,
+            grid: Vec::new(),
+            prey_position: Vec::new(),
+            predator_position: Vec::new(),
+            prey_reproduction_factor,
+            prey_moving_factor,
+            predator_reproduction_factor,
+            predator_moving_factor,
+            predator_hunting_factor,
+            predator_hunger,
+            predator_death_rate,
+            predator_max_hunger,
+            nb_initial_prey,
+            nb_initial_predators,
+        }
+    }
+    
+    fn init_grid(mut self){
+        let rc_self = Rc::new(RefCell::new(self));
+        for i in 0..rc_self.borrow().get_width() {
+            let mut row = Vec::new();
+            for j in 0..rc_self.borrow().get_height() {
+                row.push(Rc::new(RefCell::new(Cell::new(i, j, Rc::clone(&rc_self)))));
+            }
+            rc_self.borrow_mut().grid.push(row);
+        }
+    }
+    
+    fn get_cell(&mut self, x: i32, y: i32) -> Option<&mut Rc<RefCell<Cell<'static>>>> {
+        if x < 0 || x >= self.width || y < 0 || y >= self.height {
+            return None;
+        }
+        Some(&mut self.grid[x as usize][y as usize])
+    }
+    
+    fn get_width(&self) -> i32 {
+        self.width
+    }
+    
+    fn get_height(&self) -> i32 {
+        self.height
+    }
+    
+    fn init_simulation(&'static mut self) {
+        let width = self.get_width();
+        let height = self.get_height();
+        for _ in 0..self.nb_initial_prey {
+            let mut rng = rand::rng();
+            let x = rng.random_range(0..width);
+            let y = rng.random_range(0..height);
+            self.get_cell(x, y).unwrap().borrow_mut().content = Some(Box::new(Prey::new(self.prey_reproduction_factor, self.prey_moving_factor)));
+            self.get_cell(x, y).unwrap().borrow_mut().is_empty = false;
+            self.get_cell(x, y).unwrap().borrow_mut().is_prey = true;
+        }
+        for _ in 0..self.nb_initial_predators {
+            let mut rng = rand::rng();
+            let x = rng.random_range(0..width);
+            let y = rng.random_range(0..height);
+            self.get_cell(x, y).unwrap().borrow_mut().content = Some(Box::new(Predator::new(x, y, self.predator_reproduction_factor, self.predator_moving_factor, self.predator_hunting_factor, self.predator_max_hunger, width, height)));
+            self.get_cell(x, y).unwrap().borrow_mut().is_empty = false;
+            self.get_cell(x, y).unwrap().borrow_mut().is_predator = true;
+        }
+        for i in 0..width {
+            for j in 0..height {
+                for (dx, dy) in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 0), (0, 1), (1, -1), (1, 0), (1, 1)] {
+                    let ni = (i + dx + width) % height;
+                    let nj = (j + dy + width) % height;
+                    if ni != i || nj != j {
+                        let cell = self.get_cell(i, j).unwrap();
+                        let neighbour = self.get_cell(ni, nj).unwrap();
+                        cell.borrow_mut().add_neighbour(neighbour);
+                    }
+                }
+            }
+        }
+    }
 }
 
 
