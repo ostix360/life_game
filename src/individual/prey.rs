@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use rand::prelude::*;
+use rand::rng;
 
 use crate::cell::Cell;
 use crate::individual::Individual;
@@ -41,8 +42,8 @@ impl Prey {
         }
         
         // Roll for movement chance
-        let mut rng = rand::thread_rng();
-        if rng.gen::<f32>() >= self.moving_factor {
+        let mut rng = rng();
+        if rng.random::<f32>() >= self.moving_factor {
             return false;
         }
         
@@ -87,8 +88,8 @@ impl Prey {
         }
         
         // Check if reproduction occurs (based on probability)
-        let mut rng = rand::thread_rng();
-        if rng.gen::<f32>() >= self.reproduction_rate {
+        let mut rng = rng();
+        if rng.random::<f32>() >= self.reproduction_rate {
             return false;
         }
         
@@ -117,7 +118,7 @@ impl Prey {
 impl Individual for Prey {
     fn update(
         &mut self,
-        current_cell: &mut Cell,
+        _current_cell: &mut Cell,
         _nearest_prey: Option<(i32, i32)>, // Prey doesn't need this information
         local_contents: Vec<Rc<RefCell<Cell>>>,
         local_empty_cells: Vec<Rc<RefCell<Cell>>>

@@ -8,9 +8,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::HashSet;
-use rand::{Rng, thread_rng};
+use rand::{rng, Rng};
 use kd_tree::{KdTree, KdPoint};
-use rayon::prelude::*;
+use ordered_float::OrderedFloat;
 
 pub mod individual;
 pub mod cell;
@@ -20,20 +20,20 @@ use crate::individual::prey::Prey;
 use crate::individual::predator::Predator;
 
 // Define a struct to represent a point in 2D space for the KD-tree
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 struct Point {
     x: i32,
     y: i32,
 }
 
 impl KdPoint for Point {
-    type Scalar = f32;
+    type Scalar = OrderedFloat<f32>;
     type Dim = typenum::U2;
 
     fn at(&self, k: usize) -> Self::Scalar {
         match k {
-            0 => self.x as f32,
-            1 => self.y as f32,
+            0 => OrderedFloat(self.x as f32),
+            1 => OrderedFloat(self.y as f32),
             _ => unreachable!(),
         }
     }
@@ -167,10 +167,10 @@ impl Simulation {
         }
         
         // Initialize with random prey
-        let mut rng = thread_rng();
+        let mut rng_ = rng();
         for _ in 0..self.config.nb_prey_init {
-            let x = rng.gen_range(0..self.width);
-            let y = rng.gen_range(0..self.height);
+            let x = rng_.random_range(0..self.width);
+            let y = rng_.random_range(0..self.height);
             
             let prey = Prey::new(
                 self.config.prey_reproduction_rate,
@@ -190,8 +190,8 @@ impl Simulation {
         
         // Initialize with random predators
         for _ in 0..self.config.nb_predator_init {
-            let x = rng.gen_range(0..self.width);
-            let y = rng.gen_range(0..self.height);
+            let x = rng_.random_range(0..self.width);
+            let y = rng_.random_range(0..self.height);
             
             let predator = Predator::new(
                 self.config.predator_hunting_factor,
@@ -226,7 +226,7 @@ impl Simulation {
         // Only build KdTree if we have prey
         if !prey_points.is_empty() {
             // Build a new KdTree with current prey positions
-            self.prey_kdtree = Some(KdTree::build_with_capacity(prey_points.len(), prey_points));
+            self.prey_kdtree = Some(KdTree::build_by_ordered_float(prey_points));
         } else {
             self.prey_kdtree = None;
         }
@@ -242,7 +242,7 @@ impl Simulation {
                 
                 // Find the nearest prey
                 if let Some(nearest) = tree.nearest(&query) {
-                    return Some((nearest.x, nearest.y));
+                    return Some((nearest.item.x, nearest.item.y));
                 }
             }
         }
@@ -252,7 +252,10 @@ impl Simulation {
     
     /// Update the simulation by one step
     pub fn update(&mut self) {
-        // Create a vector to track cells that need updating
+        // Reset prey positions for this update
+        self.temp_prey_positions.clear();
+        
+        // Create vectors to track cells that need updating
         let mut prey_cells = Vec::new();
         let mut predator_cells = Vec::new();
         
@@ -265,12 +268,18 @@ impl Simulation {
                 if !cell_ref.is_empty {
                     if cell_ref.is_prey {
                         prey_cells.push((x, y));
+                        // Add to temp prey positions for current state
+                        self.temp_prey_positions.insert((x as i32, y as i32));
                     } else if cell_ref.is_predator {
                         predator_cells.push((x, y));
                     }
                 }
             }
         }
+        
+        // Reset population counters to ensure accurate counts
+        self.nb_prey = self.temp_prey_positions.len();
+        self.nb_predator = predator_cells.len();
         
         // Update predators first
         for (x, y) in predator_cells {
@@ -283,18 +292,32 @@ impl Simulation {
             // Update the predator
             {
                 let mut cell_mut = cell.borrow_mut();
-                cell_mut.update(nearest_prey);
+                let was_updated = cell_mut.update(nearest_prey);
+                
+                // If the predator moved or died, update our tracking
+                if was_updated {
+                    // Predator was removed or moved
+                    self.predator_positions.remove(&(x as i32, y as i32));
+                    self.nb_predator -= 1;
+                }
             }
         }
         
-        // Update prey second
+        // Update prey second (might have been eaten by predators already)
         for (x, y) in prey_cells {
             let cell = &self.grid[y][x];
             
             // Only update if the cell still contains prey (might have been eaten)
             if cell.borrow().is_prey {
                 let mut cell_mut = cell.borrow_mut();
-                cell_mut.update(None);
+                let was_updated = cell_mut.update(None);
+                
+                // If the prey moved, update our tracking
+                if was_updated {
+                    // Prey was removed or moved
+                    self.temp_prey_positions.remove(&(x as i32, y as i32));
+                    self.nb_prey -= 1;
+                }
             }
         }
         
@@ -303,6 +326,38 @@ impl Simulation {
         
         // Update the KD-Tree with new prey positions
         self.update_prey_kdtree();
+        
+        // Count all existing organisms again to ensure accuracy
+        self.recount_populations();
+    }
+    
+    /// Recount all individuals in the simulation to ensure accurate population counts
+    fn recount_populations(&mut self) {
+        let mut prey_count = 0;
+        let mut predator_count = 0;
+        let mut prey_positions = HashSet::new();
+        let mut predator_positions = HashSet::new();
+        
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let cell = &self.grid[y][x];
+                let cell_ref = cell.borrow();
+                
+                if cell_ref.is_prey {
+                    prey_count += 1;
+                    prey_positions.insert((x as i32, y as i32));
+                } else if cell_ref.is_predator {
+                    predator_count += 1;
+                    predator_positions.insert((x as i32, y as i32));
+                }
+            }
+        }
+        
+        // Update our tracking data
+        self.nb_prey = prey_count;
+        self.nb_predator = predator_count;
+        self.prey_positions = prey_positions;
+        self.predator_positions = predator_positions;
     }
     
     /// Get the current number of prey in the simulation

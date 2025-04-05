@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use rand::prelude::*;
+use rand::rng;
 
 use crate::cell::Cell;
 use crate::individual::Individual;
@@ -58,8 +59,8 @@ impl Predator {
             // If the cell contains prey, try to hunt it
             if cell_ref.is_prey {
                 // Roll for hunting success
-                let mut rng = thread_rng();
-                if rng.gen::<f32>() < self.hunting_factor {
+                let mut rng = rng();
+                if rng.random::<f32>() < self.hunting_factor {
                     // Successful hunt: reset hunger and empty the prey cell
                     self.hunger = 0;
                     cell_ref.empty();
@@ -95,8 +96,8 @@ impl Predator {
         }
         
         // Check if reproduction occurs (based on probability)
-        let mut rng = thread_rng();
-        if rng.gen::<f32>() >= self.reproduction_rate {
+        let mut rng = rng();
+        if rng.random::<f32>() >= self.reproduction_rate {
             return false;
         }
         
@@ -198,7 +199,7 @@ impl Predator {
         
         // If we don't know where prey is, or can't move toward it,
         // move randomly like prey does
-        let mut rng = thread_rng();
+        let mut rng = rng();
         if let Some(cell) = local_empty_cells.choose(&mut rng) {
             let mut cell_mut = cell.borrow_mut();
             
@@ -219,7 +220,7 @@ impl Predator {
 impl Individual for Predator {
     fn update(
         &mut self,
-        current_cell: &mut Cell,
+        _current_cell: &mut Cell,  // Prefix with underscore to indicate intentionally unused
         nearest_prey: Option<(i32, i32)>,
         local_contents: Vec<Rc<RefCell<Cell>>>,
         local_empty_cells: Vec<Rc<RefCell<Cell>>>
@@ -228,8 +229,8 @@ impl Individual for Predator {
         self.hunger += 1;
         
         // Check for random death
-        let mut rng = thread_rng();
-        if rng.gen::<f32>() < self.death_rate {
+        let mut rng = rng();
+        if rng.random::<f32>() < self.death_rate {
             return true; // Die
         }
         

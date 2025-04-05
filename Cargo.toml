@@ -8,5 +8,5 @@ kd-tree = "0.6.0"
 pyo3 = "0.24.1"
 rand = "0.9.0"
 rayon = "1.8.0"  # For parallel processing
-ordered-float = "4.1.1"  # Required by kd-tree operations
+ordered-float = "4.1.1"  # Required by kd-tree operations for ordering f32 values
 typenum = "1.17.0"  # For type-level numerics used by kd-tree
