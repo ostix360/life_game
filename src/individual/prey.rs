@@ -41,7 +41,7 @@ impl Prey {
         }
         
         // Roll for movement chance
-        let mut rng = thread_rng();
+        let mut rng = rand::thread_rng();
         if rng.gen::<f32>() >= self.moving_factor {
             return false;
         }
@@ -87,7 +87,7 @@ impl Prey {
         }
         
         // Check if reproduction occurs (based on probability)
-        let mut rng = thread_rng();
+        let mut rng = rand::thread_rng();
         if rng.gen::<f32>() >= self.reproduction_rate {
             return false;
         }

@@ -8,8 +8,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::HashSet;
-use rand::Rng;
-use kd_tree::KdTree;
+use rand::{Rng, thread_rng};
+use kd_tree::{KdTree, KdPoint};
 use rayon::prelude::*;
 
 pub mod individual;
@@ -18,6 +18,26 @@ pub mod cell;
 use crate::cell::Cell;
 use crate::individual::prey::Prey;
 use crate::individual::predator::Predator;
+
+// Define a struct to represent a point in 2D space for the KD-tree
+#[derive(Copy, Clone, Debug)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl KdPoint for Point {
+    type Scalar = f32;
+    type Dim = typenum::U2;
+
+    fn at(&self, k: usize) -> Self::Scalar {
+        match k {
+            0 => self.x as f32,
+            1 => self.y as f32,
+            _ => unreachable!(),
+        }
+    }
+}
 
 /// Parameters for the simulation
 pub struct SimulationConfig {
@@ -72,7 +92,7 @@ pub struct Simulation {
     /// Temporary set for updating prey positions
     temp_prey_positions: HashSet<(i32, i32)>,
     /// KD-Tree for efficiently finding nearest prey
-    prey_kdtree: Option<KdTree<[i32; 2]>>,
+    prey_kdtree: Option<KdTree<Point>>,
     /// Count of prey in the simulation
     nb_prey: usize,
     /// Count of predators in the simulation
@@ -147,7 +167,7 @@ impl Simulation {
         }
         
         // Initialize with random prey
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
         for _ in 0..self.config.nb_prey_init {
             let x = rng.gen_range(0..self.width);
             let y = rng.gen_range(0..self.height);
@@ -197,16 +217,16 @@ impl Simulation {
     
     /// Update the KD-Tree with current prey positions for efficient nearest-neighbor search
     fn update_prey_kdtree(&mut self) {
-        // Convert HashSet to Vec of arrays for KdTree
-        let prey_points: Vec<[i32; 2]> = self.prey_positions
+        // Convert HashSet to Vec of Point structs for KdTree
+        let prey_points: Vec<Point> = self.prey_positions
             .iter()
-            .map(|&(x, y)| [x, y])
+            .map(|&(x, y)| Point { x, y })
             .collect();
         
         // Only build KdTree if we have prey
         if !prey_points.is_empty() {
             // Build a new KdTree with current prey positions
-            self.prey_kdtree = Some(KdTree::build_by_ordered_float(prey_points));
+            self.prey_kdtree = Some(KdTree::build_with_capacity(prey_points.len(), prey_points));
         } else {
             self.prey_kdtree = None;
         }
@@ -218,11 +238,11 @@ impl Simulation {
         if let Some(ref tree) = self.prey_kdtree {
             if !self.prey_positions.is_empty() {
                 // Convert predator position to point format
-                let query = [predator_pos.0, predator_pos.1];
+                let query = Point { x: predator_pos.0, y: predator_pos.1 };
                 
                 // Find the nearest prey
-                if let Some((point, _distance)) = tree.nearest(&query) {
-                    return Some((point[0], point[1]));
+                if let Some(nearest) = tree.nearest(&query) {
+                    return Some((nearest.x, nearest.y));
                 }
             }
         }
