@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 use rand::prelude::IndexedMutRandom;
 use rand::Rng;
@@ -20,7 +20,7 @@ impl Prey {
         }
     }
 
-    fn move_to<'s>(&self, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
+    fn move_to<'s>(&self, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         if local_empty_cells.is_empty() {
             return false
         }
@@ -32,18 +32,18 @@ impl Prey {
         true
     }
 
-    fn reproduce<'s>(&self, local_contents: &Vec<&mut Cell>, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
+    fn reproduce<'s>(&self, local_contents: &Vec<Rc<RefCell<Cell>>>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         if local_empty_cells.is_empty() {
             return false
         }
-        let nb_prey = local_contents.iter().filter(|cell| cell.is_prey).count();
+        let nb_prey = local_contents.iter().filter(|cell| cell.borrow().is_prey()).count();
         if nb_prey == 0 || nb_prey >= 4 {
             return false
         }
         let mut rng = rand::rng();
         for cell in local_contents.iter() {
             let rng_nb: f32 = rng.random();
-            if cell.is_prey && rng_nb < self.reproduction_factor {
+            if cell.borrow().is_prey() && rng_nb < self.reproduction_factor {
                 let mut empty_cell = local_empty_cells.choose_mut(&mut rng).unwrap();
                 empty_cell.borrow_mut().content = Some(Box::new(Prey::new(self.reproduction_factor, self.moving_factor)));
                 empty_cell.borrow_mut().is_empty = false;
@@ -56,7 +56,7 @@ impl Prey {
 }
 
 impl Individual for Prey {
-    fn update<'s>(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut Vec<&mut Cell>, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
+    fn update<'s>(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut Vec<Rc<RefCell<Cell>>>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         if self.reproduce(local_contents, local_empty_cells){
             return false
         }

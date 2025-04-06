@@ -37,20 +37,20 @@ impl Predator {
         }
     }
     
-    fn hunt(&mut self, local_contents: &mut Vec<&mut Cell>) -> bool {
+    fn hunt(&mut self, local_contents: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         for cell in local_contents.iter_mut() {
             let rng_num: f32 = rand::rng().random();
-            if cell.is_prey() &&  rng_num < self.hunting_factor {
+            if cell.borrow().is_prey() &&  rng_num < self.hunting_factor {
                 self.hunger = 0;
-                cell.empty();
+                cell.borrow_mut().empty();
                 return true;
             }
         }
         return false;
     }
     
-    fn reproduce<'s>(&mut self, local_contents: &Vec<&mut Cell>, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
-        let nbr_predators = local_contents.iter().filter(|cell| cell.is_predator()).count();
+    fn reproduce<'s>(&mut self, local_contents: &Vec<Rc<RefCell<Cell>>>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
+        let nbr_predators = local_contents.iter().filter(|cell| cell.borrow().is_predator()).count();
         let rng_num: f32 = rand::rng().random();
         if nbr_predators == 0 || nbr_predators > 3 {
             return false;
@@ -65,7 +65,7 @@ impl Predator {
         false
     }
     
-    fn move_to<'s>(&self, nearest_prey_pos: Option<(i32, i32)>, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
+    fn move_to<'s>(&self, nearest_prey_pos: Option<(i32, i32)>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         if let Some((x, y)) = nearest_prey_pos {
             let dx: i32 = if x > self.x { 1 } else if x == self.x { 0 } else { 1 };
             let dy: i32 = if y > self.y { 1 } else if y == self.y { 0 } else { -1 };
@@ -93,7 +93,7 @@ impl Predator {
 }
 
 impl Individual for Predator {
-    fn update<'s>(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut Vec<&mut Cell>, local_empty_cells: &mut Vec<&'s mut Rc<RefCell<Cell<'s>>>>) -> bool {
+    fn update<'s>(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut Vec<Rc<RefCell<Cell>>>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         self.hunger += 1;
         let rng_num: f32 = rand::rng().random();
         if rng_num < self.death_rate || self.hunger > self.max_hunger {

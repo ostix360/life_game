@@ -4,21 +4,21 @@
 mod individual;
 mod cell;
 
+use kd_tree;
+use rand::Rng;
 use std::cell::RefCell;
 use std::rc::Rc;
-use rand::Rng;
-use kd_tree;
-
+use kd_tree::KdTree;
 use crate::cell::Cell;
-use crate::individual::prey::Prey;
 use crate::individual::predator::Predator;
+use crate::individual::prey::Prey;
 
 
 struct Simulation {
     width: i32,
     height: i32,
-    grid: Vec<Vec<Rc<RefCell<Cell<'static>>>>>,
-    prey_position: Vec<(i32, i32)>,
+    grid: Vec<Vec<Rc<RefCell<Cell>>>>,
+    prey_position: Vec<[i32; 2]>,
     predator_position: Vec<(i32, i32)>,
     prey_reproduction_factor: f32,
     prey_moving_factor: f32,
@@ -53,22 +53,22 @@ impl Simulation {
         }
     }
     
-    fn init_grid(mut self){
-        let rc_self = Rc::new(RefCell::new(self));
-        for i in 0..rc_self.borrow().get_width() {
+    fn init_grid(&mut self){
+        for i in 0..self.get_width() {
             let mut row = Vec::new();
-            for j in 0..rc_self.borrow().get_height() {
-                row.push(Rc::new(RefCell::new(Cell::new(i, j, Rc::clone(&rc_self)))));
+            for j in 0..self.get_height() {
+                row.push(Rc::new(RefCell::new(Cell::new(i, j))));
             }
-            rc_self.borrow_mut().grid.push(row);
+            self.grid.push(row);
         }
     }
     
-    fn get_cell(&mut self, x: i32, y: i32) -> Option<&mut Rc<RefCell<Cell<'static>>>> {
+    fn get_cell(&mut self, x: i32, y: i32) -> Option<Rc<RefCell<Cell>>> {
         if x < 0 || x >= self.width || y < 0 || y >= self.height {
             return None;
         }
-        Some(&mut self.grid[x as usize][y as usize])
+        let cell = Rc::clone(&self.grid[x as usize][y as usize]);
+        Some(cell)
     }
     
     fn get_width(&self) -> i32 {
@@ -112,15 +112,59 @@ impl Simulation {
             }
         }
     }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        assert_eq!(true, true);
+    
+    fn get_nearest_preys(&self, predator_pos: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
+        let kd_tree = KdTree::build(self.prey_position.clone());
+        let mut nearest_preys = Vec::new();
+        for (x, y) in predator_pos {
+            let nearest = kd_tree.nearest(&[x,y]);
+            if let Some(nearest) = nearest {
+                nearest_preys.push((nearest.item[0], nearest.item[1]));
+            }
+        }
+        nearest_preys 
+    }
+    
+    fn update_parallel(&mut self, i: i32, j: i32) {
+        let mut prey_cell = Vec::new();
+        let mut predator_cell = Vec::new();
+        let mut predator_coords = Vec::new();
+        self.prey_position.clear();
+        
+        for x in (0..self.get_width()).step_by(3) {
+            for y in (0..self.get_height()).step_by(3) {
+                let cell = self.get_cell(i + x, j + y).unwrap();
+                let cell_ref = Rc::clone(&cell);
+                if cell_ref.borrow().is_prey() {
+                    self.prey_position.push([cell_ref.borrow().x, cell_ref.borrow().y]);
+                    prey_cell.push(cell_ref);
+                } else if cell_ref.borrow().is_predator() {
+                    predator_coords.push((cell_ref.borrow().x, cell_ref.borrow().y));
+                    predator_cell.push(cell_ref);
+                }
+            }
+        }
+        self.predator_position = predator_coords.clone();
+        
+        let nearest_prey = self.get_nearest_preys(predator_coords);
+        for cell in prey_cell {
+            cell.borrow_mut().update(None);
+        }
+        for (i, cell) in predator_cell.iter().enumerate() {
+            let nearest_prey = if i < nearest_prey.len() {
+                Some(nearest_prey[i])
+            } else {
+                None
+            };
+            cell.borrow_mut().update(nearest_prey);
+        }
+    }
+    
+    pub fn simulate(&mut self) {
+        for i in [0, 1, 2] {
+            for j in [0, 1, 2] {
+                self.update_parallel(i, j);
+            }
+        }
     }
 }
