@@ -30,7 +30,7 @@ impl Cell {
             let mut local_empty_cells = self.neighbours
                 .iter()
                 .filter(|cell| cell.borrow().is_empty())
-                .map(|cell| Rc::clone(cell))
+                .map(Rc::clone)
                 .collect::<Vec<_>>();
             
             let is_dead = content.update(nearest_prey, &mut self.neighbours, &mut local_empty_cells);

@@ -4,7 +4,6 @@
 mod individual;
 mod cell;
 
-use kd_tree;
 use rand::Rng;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -144,7 +143,7 @@ impl Simulation {
                 }
             }
         }
-        self.predator_position = predator_coords.clone();
+        self.predator_position.clone_from(&predator_coords);
         
         let nearest_prey = self.get_nearest_preys(predator_coords);
         for cell in prey_cell {

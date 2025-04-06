@@ -36,7 +36,7 @@ impl Predator {
         }
     }
     
-    fn hunt(&mut self, local_contents: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
+    fn hunt(&mut self, local_contents: &mut [Rc<RefCell<Cell>>]) -> bool {
         for cell in local_contents.iter_mut() {
             let rng_num: f32 = rand::rng().random();
             if cell.borrow().is_prey() &&  rng_num < self.hunting_factor {
@@ -45,10 +45,10 @@ impl Predator {
                 return true;
             }
         }
-        return false;
+        false
     }
     
-    fn reproduce<'s>(&mut self, local_contents: &Vec<Rc<RefCell<Cell>>>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
+    fn reproduce(&mut self, local_contents: &[Rc<RefCell<Cell>>], local_empty_cells: &mut [Rc<RefCell<Cell>>]) -> bool {
         let nbr_predators = local_contents.iter().filter(|cell| cell.borrow().is_predator()).count();
         let rng_num: f32 = rand::rng().random();
         if nbr_predators == 0 || nbr_predators > 3 {
@@ -64,10 +64,18 @@ impl Predator {
         false
     }
     
-    fn move_to<'s>(&self, nearest_prey_pos: Option<(i32, i32)>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
+    fn move_to(&self, nearest_prey_pos: Option<(i32, i32)>, local_empty_cells: &mut [Rc<RefCell<Cell>>]) -> bool {
         if let Some((x, y)) = nearest_prey_pos {
-            let dx: i32 = if x > self.x { 1 } else if x == self.x { 0 } else { 1 };
-            let dy: i32 = if y > self.y { 1 } else if y == self.y { 0 } else { -1 };
+            let dx: i32 = match x.cmp(&self.x) {
+                std::cmp::Ordering::Greater => 1,
+                std::cmp::Ordering::Equal => 0,
+                std::cmp::Ordering::Less => -1,
+            };
+            let dy: i32 = match y.cmp(&self.y) {
+                std::cmp::Ordering::Greater => 1,
+                std::cmp::Ordering::Equal => 0,
+                std::cmp::Ordering::Less => -1,
+            };
             let new_x = (self.x + dx) % self.sim_width;
             let new_y = (self.y + dy) % self.sim_height;
             for cell in local_empty_cells.iter_mut() {
@@ -92,7 +100,7 @@ impl Predator {
 }
 
 impl Individual for Predator {
-    fn update<'s>(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut Vec<Rc<RefCell<Cell>>>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
+    fn update(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut [Rc<RefCell<Cell>>], local_empty_cells: &mut [Rc<RefCell<Cell>>]) -> bool {
         self.hunger += 1;
         let rng_num: f32 = rand::rng().random();
         if rng_num < self.death_rate || self.hunger > self.max_hunger {
@@ -108,6 +116,6 @@ impl Individual for Predator {
             }
             return self.move_to(nearest_prey, local_empty_cells);
         }
-        return false;
+        false
     }
 }
