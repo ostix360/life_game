@@ -5,7 +5,6 @@ use rand::Rng;
 
 use crate::cell::Cell;
 use crate::individual::Individual;
-use crate::individual::prey::Prey;
 
 #[derive(Clone)]
 pub(crate) struct Predator {

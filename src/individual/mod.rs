@@ -3,7 +3,6 @@ pub(crate) mod predator;
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use prey::Prey;
 use crate::cell::Cell;
 
 pub(crate) trait Individual{

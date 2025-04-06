@@ -1,7 +1,6 @@
+use crate::individual::Individual;
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::individual::Individual;
-use crate::Simulation;
 
 pub(crate) struct Cell {
     pub(crate) x: i32,

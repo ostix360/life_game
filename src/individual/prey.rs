@@ -1,7 +1,7 @@
-use std::cell::{Ref, RefCell};
-use std::rc::Rc;
 use rand::prelude::IndexedMutRandom;
 use rand::Rng;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::cell::Cell;
 use crate::individual::Individual;
@@ -56,7 +56,7 @@ impl Prey {
 }
 
 impl Individual for Prey {
-    fn update<'s>(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut Vec<Rc<RefCell<Cell>>>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
+    fn update<'s>(&mut self, _nearest_prey: Option<(i32, i32)>, local_contents: &mut Vec<Rc<RefCell<Cell>>>, local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         if self.reproduce(local_contents, local_empty_cells){
             return false
         }
