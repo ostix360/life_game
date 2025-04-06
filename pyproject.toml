@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=62.4", "setuptools_rust>=1.11"]
+
+[project]
+name = "pp_simulation"
+version = "1.0"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 1 - Alpha",
+    "Intended Audience :: Students",
+    "Programming Language :: Python",
+    "Programming Language :: Rust",
+    "Operating System :: Unix",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages]
+find = {where = ["pp_simulation"]}
+
+[[tool.setuptools-rust.ext-modules]]
+target = "life_game.life_game"
+path = "Cargo.toml"

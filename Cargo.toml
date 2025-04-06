@@ -7,3 +7,8 @@ edition = "2021"
 kd-tree = { version = "0.6.0", features = ["rayon"]}
 pyo3 = "0.24.1"
 rand = "0.9.0"
+
+[lib]
+name = "life_game"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
