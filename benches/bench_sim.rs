@@ -1,5 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use life_game::simulation::{Simulation, get_cell};
+use criterion::{criterion_group, criterion_main, Criterion};
+use life_game::simulation::Simulation;
 
 fn create_test_simulation(w: i32, h: i32) -> Simulation {
     let mut sim = Simulation::new(
