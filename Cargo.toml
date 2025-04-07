@@ -7,8 +7,17 @@ edition = "2021"
 kd-tree = { version = "0.6.0", features = ["rayon"]}
 pyo3 = "0.24.1"
 rand = "0.9.0"
+criterion = "0.5.1"
 
-[lib]
-name = "life_game"
-crate-type = ["cdylib"]
-path = "src/lib.rs"
+#[lib]
+#name = "life_game"
+#crate-type = ["cdylib"]
+#path = "src/lib.rs"
+
+#[[bin]]
+#name = "life_game"
+#path = "src/main.rs"
+
+[[bench]]
+name = "bench_sim"
+harness = false

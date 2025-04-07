@@ -7,7 +7,7 @@ use rand::Rng;
 use std::sync::{Arc, Mutex};
 
 
-fn get_cell(sim: &mut Simulation, x: i32, y: i32) -> Option<Arc<Mutex<Cell>>> {
+pub fn get_cell(sim: &mut Simulation, x: i32, y: i32) -> Option<Arc<Mutex<Cell>>> {
     if x < 0 || x >= sim.width || y < 0 || y >= sim.height {
         return None;
     }
@@ -57,7 +57,7 @@ impl Simulation {
         }
     }
 
-    pub(crate) fn init_grid(&mut self){
+    pub fn init_grid(&mut self){
         for i in 0..self.get_width() {
             let mut row = Vec::new();
             for j in 0..self.get_height() {
@@ -76,7 +76,7 @@ impl Simulation {
         self.height
     }
 
-    pub(crate) fn init_simulation(&mut self) {
+    pub fn init_simulation(&mut self) {
         let width = self.get_width();
         let height = self.get_height();
         for _ in 0..self.nb_initial_prey {
@@ -91,13 +91,13 @@ impl Simulation {
             let mut rng = rand::rng();
             let x = rng.random_range(0..width);
             let y = rng.random_range(0..height);
-            get_cell(self, x, y).unwrap().lock().unwrap().content = Some(Box::new(Predator::new(x, y, self.predator_reproduction_factor, self.predator_moving_factor, self.predator_hunting_factor, self.predator_max_hunger, width, height)));
+            get_cell(self, x, y).unwrap().lock().unwrap().content = Some(Box::new(Predator::new(x, y, self.predator_reproduction_factor, self.predator_moving_factor, self.predator_hunting_factor, self.predator_death_rate, self.predator_max_hunger, width, height)));
             get_cell(self, x, y).unwrap().lock().unwrap().is_empty = false;
             get_cell(self, x, y).unwrap().lock().unwrap().is_predator = true;
         }
         for i in 0..width {
             for j in 0..height {
-                for (dx, dy) in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 0), (0, 1), (1, -1), (1, 0), (1, 1)] {
+                for (dx, dy) in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)] {
                     let ni = (i + dx + width) % height;
                     let nj = (j + dy + width) % height;
                     if ni != i || nj != j {
@@ -122,22 +122,36 @@ impl Simulation {
         nearest_preys
     }
 
+    pub fn get_nb_prey(&self) -> usize {
+        self.prey_position.len()
+    }
+    pub fn get_nb_predators(&self) -> usize {
+        self.predator_position.len()
+    }
+    
     fn update_parallel(&mut self, i: i32, j: i32) {
         let mut prey_cell = Vec::new();
         let mut predator_cell = Vec::new();
         let mut predator_coords = Vec::new();
         self.prey_position.clear();
 
-        for x in (0..self.get_width()).step_by(3) {
-            for y in (0..self.get_height()).step_by(3) {
-                let cell = get_cell(self, i + x, j + y).unwrap();
-                let cell_ref = Arc::clone(&cell);
-                if cell_ref.lock().unwrap().is_prey() {
-                    self.prey_position.push([cell_ref.lock().unwrap().x, cell_ref.lock().unwrap().y]);
-                    prey_cell.push(cell_ref);
-                } else if cell_ref.lock().unwrap().is_predator() {
-                    predator_coords.push((cell_ref.lock().unwrap().x, cell_ref.lock().unwrap().y));
-                    predator_cell.push(cell_ref);
+        for x in (0..self.get_width()).step_by(1) {
+            for y in (0..self.get_height()).step_by(1) {
+                if let Some(cell) = get_cell(self, i + x, j + y) {
+                    let cell_ref = Arc::clone(&cell);
+                    if cell_ref.lock().unwrap().is_prey() {
+                        let x = cell_ref.lock().unwrap().x;
+                        let y = cell_ref.lock().unwrap().y;
+                        self.prey_position.push([x, y]);
+                        prey_cell.push(cell_ref);
+                    } else if cell_ref.lock().unwrap().is_predator() {
+                        let x = cell_ref.lock().unwrap().x;
+                        let y = cell_ref.lock().unwrap().y;
+                        predator_coords.push((x, y));
+                        predator_cell.push(cell_ref);
+                    }
+                }else{
+                    println!("Cell not found at ({}, {})", i + x, j + y);
                 }
             }
         }
@@ -158,11 +172,12 @@ impl Simulation {
     }
 
     pub fn simulate(&mut self) -> (Vec<[i32; 2]>, Vec<(i32, i32)>) {
-        for i in [0, 1, 2] {
-            for j in [0, 1, 2] {
-                self.update_parallel(i, j);
-            }
-        }
+        // for i in [0, 1, 2] {
+        //     for j in [0, 1, 2] {
+        //         self.update_parallel(i, j);
+        //     }
+        // }
+        self.update_parallel(0, 0);
         (self.prey_position.clone(), self.predator_position.clone())
     }
 }

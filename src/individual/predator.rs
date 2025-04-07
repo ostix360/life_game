@@ -20,27 +20,28 @@ pub(crate) struct Predator {
 }
 
 impl Predator {
-    pub(crate) fn new(x: i32, y: i32, reproduction_factor: f32, moving_factor: f32, hunting_factor: f32, max_hunger: u32, sim_width: i32, sim_height: i32) -> Self {
+    pub(crate) fn new(x: i32, y: i32, reproduction_factor: f32, moving_factor: f32, hunting_factor: f32, death_rate: f32, max_hunger: u32, sim_width: i32, sim_height: i32) -> Self {
         Predator {
             x,
             y,
             reproduction_factor,
             moving_factor,
             hunting_factor,
-            hunger: 0,
-            death_rate: 0.1,
+            hunger: max_hunger/2,
+            death_rate,
             max_hunger,
             sim_width,
             sim_height,
         }
     }
     
-    fn hunt(&mut self, local_contents: &mut [Arc<Mutex<Cell>>]) -> bool {
+    fn hunt(&mut self, local_contents: &mut [Arc<Mutex<Cell>>], local_empty_cell: &mut Vec<Arc<Mutex<Cell>>>) -> bool {
         for cell in local_contents.iter_mut() {
             let rng_num: f32 = rand::rng().random();
             if cell.lock().unwrap().is_prey() &&  rng_num < self.hunting_factor {
                 self.hunger = 0;
                 cell.lock().unwrap().empty();
+                local_empty_cell.push(Arc::clone(cell));
                 return true;
             }
         }
@@ -50,13 +51,16 @@ impl Predator {
     fn reproduce(&mut self, local_contents: &[Arc<Mutex<Cell>>], local_empty_cells: &mut [Arc<Mutex<Cell>>]) -> bool {
         let nbr_predators = local_contents.iter().filter(|cell| cell.lock().unwrap().is_predator()).count();
         let rng_num: f32 = rand::rng().random();
-        if nbr_predators == 0 || nbr_predators > 3 {
+        if nbr_predators == 0 || nbr_predators >= 4 {
             return false;
         }
-        if rng_num < self.reproduction_factor {
+        else if rng_num < self.reproduction_factor {
             if let Some(cell) = local_empty_cells.choose_mut(&mut rand::rng()) {
-                cell.lock().unwrap().content = Some(Box::new(Predator::new(self.x, self.y, self.reproduction_factor, self.moving_factor, self.hunting_factor, self.max_hunger, self.sim_width, self.sim_height)));
+                let new_x = cell.lock().unwrap().x;
+                let new_y = cell.lock().unwrap().y;
+                cell.lock().unwrap().content = Some(Box::new(Predator::new(new_x, new_y, self.reproduction_factor, self.moving_factor, self.hunting_factor, self.death_rate, self.max_hunger, self.sim_width, self.sim_height)));
                 cell.lock().unwrap().is_empty = false;
+                cell.lock().unwrap().is_predator = true;
                 return true;
             }
         }
@@ -85,36 +89,30 @@ impl Predator {
                     return true;
                 }
             }
-        } else {
-            // Move randomly to an empty cell
-            if let Some(cell) = local_empty_cells.choose_mut(&mut rand::rng()) {
-                cell.lock().unwrap().content = Some(Box::new(self.clone()));
-                cell.lock().unwrap().is_empty = false;
-                cell.lock().unwrap().is_predator = true;
-                return true;
-            }
+        } else if let Some(cell) = local_empty_cells.choose_mut(&mut rand::rng()) {
+            cell.lock().unwrap().content = Some(Box::new(self.clone()));
+            cell.lock().unwrap().is_empty = false;
+            cell.lock().unwrap().is_predator = true;
+            return true;
         }
         false
     }
 }
 
 impl Individual for Predator {
-    fn update(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut [Arc<Mutex<Cell>>], local_empty_cells: &mut [Arc<Mutex<Cell>>]) -> bool {
+    fn update(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut [Arc<Mutex<Cell>>], local_empty_cells: &mut Vec<Arc<Mutex<Cell>>>) -> bool {
         self.hunger += 1;
         let rng_num: f32 = rand::rng().random();
-        if rng_num < self.death_rate || self.hunger > self.max_hunger {
+        if rng_num < self.death_rate || self.hunger >= self.max_hunger {
             return true;
         }
-        self.hunt(local_contents); 
-        if self.hunger > self.max_hunger / 2{
+        self.hunt(local_contents, local_empty_cells); 
+        if self.hunger >= self.max_hunger / 2 || local_empty_cells.is_empty(){
             return false;
         }
-        if !local_empty_cells.is_empty() {
-            if self.reproduce(local_contents, local_empty_cells) {
-                return false;
-            }
-            return self.move_to(nearest_prey, local_empty_cells);
+        if self.reproduce(local_contents, local_empty_cells) {
+            return false;
         }
-        false
+        self.move_to(nearest_prey, local_empty_cells)
     }
 }

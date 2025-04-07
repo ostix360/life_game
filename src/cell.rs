@@ -1,7 +1,7 @@
 use crate::individual::Individual;
 use std::sync::{Arc, Mutex};
 
-pub(crate) struct Cell {
+pub struct Cell {
     pub(crate) x: i32,
     pub(crate) y: i32,
     pub content: Option<Box<dyn Individual + Send + Sync>>,

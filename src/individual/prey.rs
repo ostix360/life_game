@@ -23,6 +23,10 @@ impl Prey {
             return false
         }
         let mut rng = rand::rng();
+        let rng_nb: f32 = rng.random();
+        if rng_nb > self.moving_factor {
+            return false
+        }
         let empty_cell = local_empty_cells.choose_mut(&mut rng).unwrap();
         empty_cell.lock().unwrap().content = Some(Box::new(self.clone()));
         empty_cell.lock().unwrap().is_empty = false;
@@ -54,7 +58,7 @@ impl Prey {
 }
 
 impl Individual for Prey {
-    fn update(&mut self, _nearest_prey: Option<(i32, i32)>, local_contents: &mut [Arc<Mutex<Cell>>], local_empty_cells: &mut [Arc<Mutex<Cell>>]) -> bool {
+    fn update(&mut self, _nearest_prey: Option<(i32, i32)>, local_contents: &mut [Arc<Mutex<Cell>>], local_empty_cells: &mut Vec<Arc<Mutex<Cell>>>) -> bool {
         if self.reproduce(local_contents, local_empty_cells){
             return false
         }
