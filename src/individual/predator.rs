@@ -1,6 +1,7 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use rand::prelude::IndexedMutRandom;
 use rand::Rng;
-use std::sync::{Arc, Mutex};
 
 use crate::cell::Cell;
 use crate::individual::Individual;
@@ -36,39 +37,39 @@ impl Predator {
     }
 
     
-    fn hunt(&mut self, local_contents: &mut [Arc<Mutex<Cell>>], local_empty_cell: &mut Vec<Arc<Mutex<Cell>>>) -> bool {
+    fn hunt(&mut self, local_contents: &mut [Rc<RefCell<Cell>>], local_empty_cell: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         for cell in local_contents.iter_mut() {
             let rng_num: f32 = rand::rng().random();
-            if cell.lock().unwrap().is_prey() &&  rng_num < self.hunting_factor {
+            if cell.borrow().is_prey() &&  rng_num < self.hunting_factor {
                 self.hunger = 0;
-                cell.lock().unwrap().empty();
-                local_empty_cell.push(Arc::clone(cell));
+                cell.borrow_mut().empty();
+                local_empty_cell.push(Rc::clone(cell));
                 return true;
             }
         }
         false
     }
     
-    fn reproduce(&mut self, local_contents: &[Arc<Mutex<Cell>>], local_empty_cells: &mut [Arc<Mutex<Cell>>]) -> bool {
-        let nbr_predators = local_contents.iter().filter(|cell| cell.lock().unwrap().is_predator()).count();
+    fn reproduce(&mut self, local_contents: &[Rc<RefCell<Cell>>], local_empty_cells: &mut [Rc<RefCell<Cell>>]) -> bool {
+        let nbr_predators = local_contents.iter().filter(|cell| cell.borrow().is_predator()).count();
         let rng_num: f32 = rand::rng().random();
         if nbr_predators == 0 || nbr_predators >= 4 {
             return false;
         }
         else if rng_num < self.reproduction_factor {
             if let Some(cell) = local_empty_cells.choose_mut(&mut rand::rng()) {
-                let new_x = cell.lock().unwrap().x;
-                let new_y = cell.lock().unwrap().y;
-                cell.lock().unwrap().content = Some(Box::new(Predator::new(new_x, new_y, self.reproduction_factor, self.moving_factor, self.hunting_factor, self.death_rate, self.max_hunger, self.sim_width, self.sim_height)));
-                cell.lock().unwrap().is_empty = false;
-                cell.lock().unwrap().is_predator = true;
+                let new_x = cell.borrow().x;
+                let new_y = cell.borrow().y;
+                cell.borrow_mut().content = Some(Box::new(Predator::new(new_x, new_y, self.reproduction_factor, self.moving_factor, self.hunting_factor, self.death_rate, self.max_hunger, self.sim_width, self.sim_height)));
+                cell.borrow_mut().is_empty = false;
+                cell.borrow_mut().is_predator = true;
                 return true;
             }
         }
         false
     }
 
-    fn move_to(&self, nearest_prey_pos: Option<(i32, i32)>, local_empty_cells: &mut [Arc<Mutex<Cell>>]) -> bool {
+    fn move_to(&self, nearest_prey_pos: Option<(i32, i32)>, local_empty_cells: &mut [Rc<RefCell<Cell>>]) -> bool {
         if let Some((x, y)) = nearest_prey_pos {
             let dx: i32 = match x.cmp(&self.x) {
                 std::cmp::Ordering::Greater => 1,
@@ -83,17 +84,17 @@ impl Predator {
             let new_x = (self.x + dx) % self.sim_width;
             let new_y = (self.y + dy) % self.sim_height;
             for cell in local_empty_cells.iter_mut() {
-                if cell.lock().unwrap().x == new_x && cell.lock().unwrap().y == new_y {
-                    cell.lock().unwrap().content = Some(Box::new(self.clone()));
-                    cell.lock().unwrap().is_empty = false;
-                    cell.lock().unwrap().is_predator = true;
+                if cell.borrow().x == new_x && cell.borrow().y == new_y {
+                    cell.borrow_mut().content = Some(Box::new(self.clone()));
+                    cell.borrow_mut().is_empty = false;
+                    cell.borrow_mut().is_predator = true;
                     return true;
                 }
             }
         } else if let Some(cell) = local_empty_cells.choose_mut(&mut rand::rng()) {
-            cell.lock().unwrap().content = Some(Box::new(self.clone()));
-            cell.lock().unwrap().is_empty = false;
-            cell.lock().unwrap().is_predator = true;
+            cell.borrow_mut().content = Some(Box::new(self.clone()));
+            cell.borrow_mut().is_empty = false;
+            cell.borrow_mut().is_predator = true;
             return true;
         }
         false
@@ -101,7 +102,7 @@ impl Predator {
 }
 
 impl Individual for Predator {
-    fn update(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut [Arc<Mutex<Cell>>], local_empty_cells: &mut Vec<Arc<Mutex<Cell>>>) -> bool {
+    fn update(&mut self, nearest_prey: Option<(i32, i32)>, local_contents: &mut [Rc<RefCell<Cell>>], local_empty_cells: &mut Vec<Rc<RefCell<Cell>>>) -> bool {
         self.hunger += 1;
         let rng_num: f32 = rand::rng().random();
         if rng_num < self.death_rate || self.hunger >= self.max_hunger {

@@ -1,11 +1,12 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::individual::Individual;
-use std::sync::{Arc, Mutex};
 
 pub struct Cell {
     pub(crate) x: i32,
     pub(crate) y: i32,
     pub content: Option<Box<dyn Individual + Send + Sync>>,
-    neighbours: Vec<Arc<Mutex<Cell>>>,
+    neighbours: Vec<Rc<RefCell<Cell>>>,
     pub(crate) is_empty: bool,
     pub(crate) is_predator: bool,
     pub(crate) is_prey: bool,
@@ -28,8 +29,8 @@ impl Cell {
         if let Some(content) = &mut self.content {
             let mut local_empty_cells = self.neighbours
                 .iter()
-                .filter(|cell| cell.lock().unwrap().is_empty())
-                .map(Arc::clone)
+                .filter(|cell| cell.borrow_mut().is_empty())
+                .map(Rc::clone)
                 .collect::<Vec<_>>();
             
             let is_dead = content.update(nearest_prey, &mut self.neighbours, &mut local_empty_cells);
@@ -38,7 +39,7 @@ impl Cell {
             }
         }
     }
-    pub(crate) fn add_neighbour(&mut self, neighbour: Arc<Mutex<Cell>>) {
+    pub(crate) fn add_neighbour(&mut self, neighbour: Rc<RefCell<Cell>>) {
         self.neighbours.push(neighbour);
     }
 
