@@ -2,8 +2,8 @@ use life_game::simulation::Simulation;
 
 fn main() {
     let mut simulation = Simulation::new(
-        100,
-        100,
+        99,
+        99,
         0.5,
         0.5,
         0.5,

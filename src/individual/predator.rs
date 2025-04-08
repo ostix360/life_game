@@ -34,6 +34,7 @@ impl Predator {
             sim_height,
         }
     }
+
     
     fn hunt(&mut self, local_contents: &mut [Arc<Mutex<Cell>>], local_empty_cell: &mut Vec<Arc<Mutex<Cell>>>) -> bool {
         for cell in local_contents.iter_mut() {
@@ -66,7 +67,7 @@ impl Predator {
         }
         false
     }
-    
+
     fn move_to(&self, nearest_prey_pos: Option<(i32, i32)>, local_empty_cells: &mut [Arc<Mutex<Cell>>]) -> bool {
         if let Some((x, y)) = nearest_prey_pos {
             let dx: i32 = match x.cmp(&self.x) {

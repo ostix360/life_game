@@ -6,7 +6,6 @@ use pyo3::{pyclass, pymethods};
 use rand::Rng;
 use std::sync::{Arc, Mutex};
 
-
 pub fn get_cell(sim: &mut Simulation, x: i32, y: i32) -> Option<Arc<Mutex<Cell>>> {
     if x < 0 || x >= sim.width || y < 0 || y >= sim.height {
         return None;
@@ -17,6 +16,7 @@ pub fn get_cell(sim: &mut Simulation, x: i32, y: i32) -> Option<Arc<Mutex<Cell>>
 
 
 #[pyclass]
+#[derive(Clone)]
 pub struct Simulation {
     width: i32,
     height: i32,
@@ -34,9 +34,9 @@ pub struct Simulation {
     nb_initial_predators: u32,
 }
 
+
 #[pymethods]
 impl Simulation {
-    
     #[new]
     pub fn new(width: i32, height: i32, prey_reproduction_factor: f32, prey_moving_factor: f32, predator_reproduction_factor: f32, predator_moving_factor: f32, predator_hunting_factor: f32, predator_death_rate: f32, predator_max_hunger: u32, nb_initial_prey: u32, nb_initial_predators: u32) -> Self {
         Simulation {
@@ -129,20 +129,21 @@ impl Simulation {
         self.predator_position.len()
     }
     
-    fn update_parallel(&mut self, i: i32, j: i32) {
+    fn update_parallel(&mut self, i: i32, j: i32) -> (Vec<[i32; 2]>, Vec<(i32, i32)>) {
         let mut prey_cell = Vec::new();
+        let mut prey_coords = Vec::new();
         let mut predator_cell = Vec::new();
         let mut predator_coords = Vec::new();
         self.prey_position.clear();
 
-        for x in (0..self.get_width()).step_by(1) {
-            for y in (0..self.get_height()).step_by(1) {
+        for x in (0..self.get_width()).step_by(3) {
+            for y in (0..self.get_height()).step_by(3) {
                 if let Some(cell) = get_cell(self, i + x, j + y) {
                     let cell_ref = Arc::clone(&cell);
                     if cell_ref.lock().unwrap().is_prey() {
                         let x = cell_ref.lock().unwrap().x;
                         let y = cell_ref.lock().unwrap().y;
-                        self.prey_position.push([x, y]);
+                        prey_coords.push([x, y]);
                         prey_cell.push(cell_ref);
                     } else if cell_ref.lock().unwrap().is_predator() {
                         let x = cell_ref.lock().unwrap().x;
@@ -155,13 +156,13 @@ impl Simulation {
                 }
             }
         }
-        self.predator_position.clone_from(&predator_coords);
 
-        let nearest_prey = self.get_nearest_preys(predator_coords);
+        let nearest_prey = self.get_nearest_preys(predator_coords.clone());
+
         for cell in prey_cell {
             cell.lock().unwrap().update(None);
         }
-        for (i, cell) in predator_cell.iter().enumerate() {
+        for (i, cell) in predator_cell.into_iter().enumerate() {
             let nearest_prey = if i < nearest_prey.len() {
                 Some(nearest_prey[i])
             } else {
@@ -169,15 +170,26 @@ impl Simulation {
             };
             cell.lock().unwrap().update(nearest_prey);
         }
+
+        (prey_coords.clone(), predator_coords.clone())
     }
 
     pub fn simulate(&mut self) -> (Vec<[i32; 2]>, Vec<(i32, i32)>) {
-        // for i in [0, 1, 2] {
-        //     for j in [0, 1, 2] {
-        //         self.update_parallel(i, j);
-        //     }
-        // }
-        self.update_parallel(0, 0);
+        let mut prey_pos = Vec::new();
+        let mut predator_pos = Vec::new();
+
+        for i in [0, 1, 2] {
+            for j in [0, 1, 2] {
+                let (prey_cell, predator_cell) = self.update_parallel(i, j);
+                prey_pos.extend(prey_cell);
+                predator_pos.extend(predator_cell);
+            }
+        }
+        
+
+        self.prey_position = prey_pos;
+        self.predator_position = predator_pos;
+        // self.update_parallel(0, 0);
         (self.prey_position.clone(), self.predator_position.clone())
     }
 }
